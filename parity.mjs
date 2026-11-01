@@ -165,7 +165,8 @@ const spend = () => { budget.calls++; fs.mkdirSync(path.dirname(budgetFile), { r
 
 async function judge(s) {
   if (!s.sub) return { ...s, score: 0, missing: true, same: '', differences: [{ what: 'the whole shot', where: 'everywhere', ref: s.title || s.id, sub: 'no screenshot was submitted for this shot', change: `take ${s.id} from the same game state and camera as the mock`, size: 'large' }] };
-  const key = sha(s.ref) + ':' + sha(s.sub) + (RUBRIC === 'screen' ? '' : ':' + RUBRIC);
+  // The likeness rubric's key carries its prompt's hash, so a reworded rubric never reuses old scores.
+  const key = sha(s.ref) + ':' + sha(s.sub) + (RUBRIC === 'screen' ? '' : ':' + RUBRIC + ':' + crypto.createHash('sha1').update(PROMPT(s)).digest('hex').slice(0, 10));
   const sim = ssim(s.ref, s.sub);
   if (cache[key]) return { ...s, ...cache[key], ssim: sim, cached: true };
   if (budget.calls >= CAP) return { ...s, score: null, skipped: `daily cap of ${CAP} model calls reached`, ssim: sim, differences: [] };
