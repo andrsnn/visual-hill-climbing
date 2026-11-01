@@ -12,6 +12,10 @@
 //   MATCH     every shot scores PASS or more: stop and hand the build to the owner
 // Each shot's best score, the build that reached it and its screenshot are kept in <out>/best.json and <out>/best/.
 // A pair is only sent to the model when one of its two images has changed, and model calls are capped per day.
+// --rubric likeness: for work that is made WITHOUT seeing the mock and cannot copy it (store art, trailer frames
+// made for a game whose real ones are held out). The mock is then the real asset of the same kind, and the score
+// says how well the shot holds up next to it as official work for the same game (characters, style, palette,
+// lettering, craft), not whether it is the same picture. Default: --rubric screen (the same screen as the mock).
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -26,11 +30,13 @@ const cfg = (key, env, def) => process.env[env] ?? FILE_CFG[key] ?? def;
 const args = process.argv.slice(2);
 const opt = k => { const i = args.indexOf('--' + k); return i < 0 ? null : args.splice(i, 2)[1]; };
 const OUT = opt('out'), ONLY = opt('only'), BUILD = opt('build');
+const RUBRIC = opt('rubric') || cfg('parity_rubric', 'REFEREE_PARITY_RUBRIC', 'screen');
 const BACKEND = opt('backend') || cfg('default_backend', 'REFEREE_BACKEND', 'claude');
 const MODEL = opt('model') || (BACKEND === 'openai' ? cfg('openai_model', 'REFEREE_OPENAI_MODEL', 'local-vision-model') : cfg('claude_model', 'REFEREE_CLAUDE_MODEL', 'sonnet'));
 const [REFS, SUBS] = args;
-const USAGE = 'usage: node parity.mjs <mocksDir> <shotsDir> [--out <dir>] [--only 03,07] [--build <commit>] [--backend claude|openai] [--model <id>]';
+const USAGE = 'usage: node parity.mjs <mocksDir> <shotsDir> [--out <dir>] [--only 03,07] [--build <commit>] [--backend claude|openai] [--model <id>] [--rubric screen|likeness]';
 if (!REFS || !SUBS) { console.error(USAGE); process.exit(2); }
+if (!['screen', 'likeness'].includes(RUBRIC)) { console.error('unknown rubric ' + RUBRIC + '\n' + USAGE); process.exit(2); }
 const outDir = OUT || path.join(SUBS, 'parity');
 const CAP = Number(cfg('parity_cap', 'REFEREE_PARITY_CAP', 90));     // model calls per day, all runs together
 const POOL = Number(cfg('parity_pool', 'REFEREE_PARITY_POOL', 3));   // model calls in parallel
@@ -106,7 +112,7 @@ function ssim(a, b) {
   const m = /All:([0-9.]+)/.exec(r.stderr || ''); return m ? Number(m[1]) : null;
 }
 
-const PROMPT = s => `You are checking whether a game build looks like the mock it is being built toward. Two pictures of the same moment:
+const SCREEN_PROMPT = s => `You are checking whether a game build looks like the mock it is being built toward. Two pictures of the same moment:
 REF is the mock: the target picture of the game. It is the truth and is not being judged.
 SUB is a live screenshot of the build. It must show the same thing as REF.
 ${s.title ? `The shot: ${s.title}.` : ''}${s.shows ? ` What REF shows: ${s.shows}` : ''}
@@ -125,6 +131,31 @@ Score how closely SUB matches REF, 0 to 10: 10 = the same screen apart from fide
 Reply with ONLY this JSON:
 {"score":0,"same":"one plain sentence on what already matches","differences":[{"what":"the element","where":"where in the frame","ref":"how it is in REF","sub":"how it is in SUB","change":"what to change in SUB","size":"large|medium|small"}]}`;
 
+// The likeness rubric: SUB was made separately for the same game and is not meant to copy REF's exact picture.
+const LIKENESS_PROMPT = s => `You are comparing two assets of the same kind for the same game, side by side.
+REF is the REAL, official asset. It is the truth and is not being judged.
+SUB was made separately for the same game, without seeing REF. It is not expected to copy REF's exact picture or layout. The question is whether SUB holds up next to REF as official work for this game.
+${s.title ? `The asset: ${s.title}.` : ''}${s.shows ? ` What to compare: ${s.shows}` : ''}
+
+Open both images, then compare them part by part:
+1. Subject identity: the characters, creatures, vehicles and objects, and whether SUB draws them as the game really has them in REF (shape, proportions, colours, costume, silhouette). Wrong, invented or duplicated characters are large differences.
+2. Art style and rendering: medium (pixel, painted, flat vector, 3D), line work, shading, texture, level of detail.
+3. Palette and lighting.
+4. Composition for this kind of asset: subject scale and placement, focal point, depth, room for the title.
+5. Typography: every word on the picture. The title lettering's font style (serif, sans, script, pixel, hand-drawn), weight, case, colour, outline and effects, size and placement. Misspelt or extra words are large differences.
+6. Craft: artefacts, smeared or mangled details, clutter, seams, anything that looks unfinished next to REF.
+
+Rules:
+- Report only differences between SUB and REF that a shopper would notice side by side. Do not suggest improvements to REF.
+- A different picture size, a different crop of the same idea, or higher fidelity is not a difference.
+- Be specific and literal: say what, where, how it differs, and the change to make in SUB. List the largest first, at most 10.
+
+Score how well SUB holds up next to REF, 0 to 10: 10 = could pass as an alternate official version of REF: the same characters drawn the same way, the same style, palette and lettering; 8-9 = holds up next to REF: right characters, style and palette, lettering in the same spirit, professional craft; only the composition or small details differ; 6-7 = clearly the same game, but one part is visibly off (for example generic lettering, a character drawn differently, flatter craft); 4-5 = the same game, but two or more parts are off; 2-3 = only the setting or genre matches: wrong character design, wrong art style or wrong lettering throughout; 0-1 = blank, broken or unrelated.
+
+Reply with ONLY this JSON:
+{"score":0,"same":"one plain sentence on what already matches","differences":[{"what":"the element","where":"where in the frame","ref":"how it is in REF","sub":"how it is in SUB","change":"what to change in SUB","size":"large|medium|small"}]}`;
+const PROMPT = s => (RUBRIC === 'likeness' ? LIKENESS_PROMPT(s) : SCREEN_PROMPT(s));
+
 const cacheFile = path.join(outDir, 'cache.json'), cache = readJson(cacheFile, {});
 const budgetFile = path.join(path.resolve(ROOT, cfg('data_dir', 'REFEREE_DATA', 'data')), 'parity-budget.json');
 const today = new Date().toISOString().slice(0, 10);
@@ -133,7 +164,7 @@ const spend = () => { budget.calls++; fs.mkdirSync(path.dirname(budgetFile), { r
 
 async function judge(s) {
   if (!s.sub) return { ...s, score: 0, missing: true, same: '', differences: [{ what: 'the whole shot', where: 'everywhere', ref: s.title || s.id, sub: 'no screenshot was submitted for this shot', change: `take ${s.id} from the same game state and camera as the mock`, size: 'large' }] };
-  const key = sha(s.ref) + ':' + sha(s.sub);
+  const key = sha(s.ref) + ':' + sha(s.sub) + (RUBRIC === 'screen' ? '' : ':' + RUBRIC);
   const sim = ssim(s.ref, s.sub);
   if (cache[key]) return { ...s, ...cache[key], ssim: sim, cached: true };
   if (budget.calls >= CAP) return { ...s, score: null, skipped: `daily cap of ${CAP} model calls reached`, ssim: sim, differences: [] };
@@ -178,7 +209,7 @@ const next = worse.length
   : pass
   ? 'Every shot matches its mock. Stop here and hand the build to the owner, who judges taste and play.'
   : `Keep building. Fix the differences listed for ${behind.join(', ')}, take new live screenshots of the running build from the same game state and camera as each mock, save them under the same names in ${SUBS}, and run this check again${BUILD ? '' : ' with --build <commit>'}. Do not stop until every shot scores ${PASS} or more.`;
-const report = { mocks: REFS, shots_dir: SUBS, build: BUILD, backend: BACKEND, model: MODEL, when: new Date().toISOString(), shots: results.length, mean: Number(mean.toFixed(2)), lowest: low, pass, verdict, next, behind, worse, pass_rule: `every shot scores ${PASS} or more`, undo_rule: `any shot scores ${DROP} or more below its best`, model_calls_today: budget.calls, cap: CAP, results: results.map(({ ref, sub, ...r }) => ({ ...r, best: best[r.id]?.score ?? null, ref, sub })) };
+const report = { mocks: REFS, shots_dir: SUBS, build: BUILD, backend: BACKEND, model: MODEL, rubric: RUBRIC, when: new Date().toISOString(), shots: results.length, mean: Number(mean.toFixed(2)), lowest: low, pass, verdict, next, behind, worse, pass_rule: `every shot scores ${PASS} or more`, undo_rule: `any shot scores ${DROP} or more below its best`, model_calls_today: budget.calls, cap: CAP, results: results.map(({ ref, sub, ...r }) => ({ ...r, best: best[r.id]?.score ?? null, ref, sub })) };
 fs.writeFileSync(path.join(outDir, 'report.json'), JSON.stringify(report, null, 1));
 const md = [`# Mock check: ${results.length} shots, mean ${report.mean}, lowest ${low}, ${verdict} (pass = ${report.pass_rule}; undo = ${report.undo_rule})${BUILD ? ' · build ' + BUILD : ''}`, '', `**${verdict}.** ${next}`, ''];
 for (const r of [...results].sort((a, b) => (a.score ?? -1) - (b.score ?? -1))) {
