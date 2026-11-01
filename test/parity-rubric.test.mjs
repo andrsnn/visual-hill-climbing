@@ -87,3 +87,18 @@ test('--rubric peer sends the peer prompt: another game is the quality bar, its 
   assert.match(p[0], /never count that as a difference/);
   assert.equal(report(t).rubric, 'peer');
 });
+
+test('a missing CLI (mid-update) is waited for, not scored as skipped', () => {
+  const t = setup();
+  // The stand-in is "missing" for its first two calls.
+  const state = path.join(t.dir, 'n.txt');
+  const flaky = path.join(t.dir, 'flaky.mjs');
+  fs.writeFileSync(flaky, `import fs from 'node:fs'; import { spawnSync } from 'node:child_process';
+const n = fs.existsSync(${JSON.stringify(state)}) ? Number(fs.readFileSync(${JSON.stringify(state)}, 'utf8')) : 0;
+fs.writeFileSync(${JSON.stringify(state)}, String(n + 1));
+if (n < 2) { process.stderr.write("'claude' is not recognized as an internal or external command"); process.exit(1); }
+let s = ''; process.stdin.on('data', (d) => (s += d)).on('end', () => process.stdout.write(JSON.stringify({ result: JSON.stringify({ score: 5, same: 'x', differences: [] }) })));`);
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'parity.mjs'), t.mocks, t.shots, '--out', path.join(t.dir, 'out'), '--rubric', 'likeness'], { encoding: 'utf8', env: { ...process.env, REFEREE_CLAUDE_BIN: `"${process.execPath}" "${flaky}"`, REFEREE_DATA: t.data, REFEREE_PARITY_CAP: '50', REFEREE_CLI_RETRY_WAIT_MS: '10' } });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(report(t).results[0].score, 5);
+});

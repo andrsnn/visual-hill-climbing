@@ -196,7 +196,14 @@ async function judge(s) {
   spend();
   const images = [{ tag: 'REF', file: jpg(s.ref, s.id + '-ref'), desc: 'the mock (the truth)' }, { tag: 'SUB', file: jpg(s.sub, s.id + '-sub'), desc: 'the build to check' }];
   let r, err;
-  for (let i = 0; i < 2 && !r; i++) { try { r = parseJson(await askModel(PROMPT(s), images)); } catch (e) { err = e.message; } }
+  // Two tries; while the CLI itself is missing (it reinstalls itself for a minute or two during an update), wait for it.
+  const RETRY_WAIT_MS = Number(cfg('cli_retry_wait_ms', 'REFEREE_CLI_RETRY_WAIT_MS', 30000));
+  for (let i = 0, missing = 0; i < 2 + missing && !r; i++) {
+    try { r = parseJson(await askModel(PROMPT(s), images)); } catch (e) {
+      err = e.message;
+      if (/not recognized|ENOENT|native binary not installed|command not found/i.test(err) && missing < 8) { missing++; await new Promise((ok) => setTimeout(ok, RETRY_WAIT_MS)); }
+    }
+  }
   if (!r) return { ...s, score: null, skipped: 'model call failed: ' + String(err).slice(0, 200), ssim: sim, differences: [] };
   const res = { score: Math.max(0, Math.min(10, Number(r.score) || 0)), same: r.same || '', differences: (r.differences || []).slice(0, 10) };
   cache[key] = res; fs.writeFileSync(cacheFile, JSON.stringify(cache, null, 1));
