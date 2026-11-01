@@ -134,23 +134,24 @@ Reply with ONLY this JSON:
 // The likeness rubric: SUB was made separately for the same game and is not meant to copy REF's exact picture.
 const LIKENESS_PROMPT = s => `You are comparing two assets of the same kind for the same game, side by side.
 REF is the REAL, official asset. It is the truth and is not being judged.
-SUB was made separately for the same game, without seeing REF. It is not expected to copy REF's exact picture or layout. The question is whether SUB holds up next to REF as official work for this game.
+SUB was made separately for the same game, without seeing REF. The question is whether SUB holds up next to REF as official work for this game, the way two official pieces of art for one game hold up next to each other.
 ${s.title ? `The asset: ${s.title}.` : ''}${s.shows ? ` What to compare: ${s.shows}` : ''}
 
+Official art for one game often shows different scenes, poses, moments, compositions and lighting moods. Those choices are NOT differences in themselves. They count only when SUB's choice is outside what this game's art looks like (an art style, palette family or kind of scene that REF's game would never use), or when it breaks the job of this kind of asset (no clear focal subject, no room for the title, the title hard to read).
+
 Open both images, then compare them part by part:
-1. Subject identity: the characters, creatures, vehicles and objects, and whether SUB draws them as the game really has them in REF (shape, proportions, colours, costume, silhouette). Wrong, invented or duplicated characters are large differences.
+1. Subject identity: the characters, creatures, vehicles and objects SUB shows, and whether they are drawn as the game really has them in REF (shape, proportions, colours, costume, silhouette). A wrong, invented or redesigned protagonist, or duplicated characters, are large differences. Showing different characters or objects that plausibly belong to the same game is not.
 2. Art style and rendering: medium (pixel, painted, flat vector, 3D), line work, shading, texture, level of detail.
-3. Palette and lighting.
-4. Composition for this kind of asset: subject scale and placement, focal point, depth, room for the title.
-5. Typography: every word on the picture. The title lettering's font style (serif, sans, script, pixel, hand-drawn), weight, case, colour, outline and effects, size and placement. Misspelt or extra words are large differences.
-6. Craft: artefacts, smeared or mangled details, clutter, seams, anything that looks unfinished next to REF.
+3. Palette family and lighting style: whether SUB's colours and light belong to the same game.
+4. Typography: every word on the picture. The title lettering's font style (serif, sans, script, pixel, hand-drawn), weight, case, colour, outline and effects, and its size and placement for this asset. Misspelt or extra words are large differences.
+5. Craft: artefacts, smeared or mangled details, clutter, seams, anything that looks unfinished or amateur next to REF.
 
 Rules:
-- Report only differences between SUB and REF that a shopper would notice side by side. Do not suggest improvements to REF.
-- A different picture size, a different crop of the same idea, or higher fidelity is not a difference.
+- Report only differences a shopper would notice side by side. Do not suggest improvements to REF.
+- A different picture size, crop, scene, pose or composition of the same game's world is not a difference by itself (see above). Higher fidelity is not a difference.
 - Be specific and literal: say what, where, how it differs, and the change to make in SUB. List the largest first, at most 10.
 
-Score how well SUB holds up next to REF, 0 to 10: 10 = could pass as an alternate official version of REF: the same characters drawn the same way, the same style, palette and lettering; 8-9 = holds up next to REF: right characters, style and palette, lettering in the same spirit, professional craft; only the composition or small details differ; 6-7 = clearly the same game, but one part is visibly off (for example generic lettering, a character drawn differently, flatter craft); 4-5 = the same game, but two or more parts are off; 2-3 = only the setting or genre matches: wrong character design, wrong art style or wrong lettering throughout; 0-1 = blank, broken or unrelated.
+Score how well SUB holds up next to REF, 0 to 10: 10 = indistinguishable in characters, style and lettering from the game's official art; 8-9 = holds up next to REF as official art: the right characters drawn the right way, the same style and palette family, lettering in the same spirit, professional craft; 6-7 = clearly the same game, but one part is visibly off (for example generic lettering, a character drawn differently, a different rendering style, weaker craft); 4-5 = the same game, but two or more parts are off; 2-3 = only the setting or genre matches: wrong character design, wrong art style or wrong lettering throughout; 0-1 = blank, broken or unrelated.
 
 Reply with ONLY this JSON:
 {"score":0,"same":"one plain sentence on what already matches","differences":[{"what":"the element","where":"where in the frame","ref":"how it is in REF","sub":"how it is in SUB","change":"what to change in SUB","size":"large|medium|small"}]}`;
