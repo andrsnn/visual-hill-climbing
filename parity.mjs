@@ -16,6 +16,9 @@
 // made for a game whose real ones are held out). The mock is then the real asset of the same kind, and the score
 // says how well the shot holds up next to it as official work for the same game (characters, style, palette,
 // lettering, craft), not whether it is the same picture. Default: --rubric screen (the same screen as the mock).
+// --rubric peer: the mock is a real, shipped asset of the same kind from ANOTHER game in a similar style (for a
+// game that has no real assets yet). The score says whether the shot holds up next to it as professional work of
+// the same kind; who and what is shown, and the title's words, are not compared.
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
@@ -34,9 +37,9 @@ const RUBRIC = opt('rubric') || cfg('parity_rubric', 'REFEREE_PARITY_RUBRIC', 's
 const BACKEND = opt('backend') || cfg('default_backend', 'REFEREE_BACKEND', 'claude');
 const MODEL = opt('model') || (BACKEND === 'openai' ? cfg('openai_model', 'REFEREE_OPENAI_MODEL', 'local-vision-model') : cfg('claude_model', 'REFEREE_CLAUDE_MODEL', 'sonnet'));
 const [REFS, SUBS] = args;
-const USAGE = 'usage: node parity.mjs <mocksDir> <shotsDir> [--out <dir>] [--only 03,07] [--build <commit>] [--backend claude|openai] [--model <id>] [--rubric screen|likeness]';
+const USAGE = 'usage: node parity.mjs <mocksDir> <shotsDir> [--out <dir>] [--only 03,07] [--build <commit>] [--backend claude|openai] [--model <id>] [--rubric screen|likeness|peer]';
 if (!REFS || !SUBS) { console.error(USAGE); process.exit(2); }
-if (!['screen', 'likeness'].includes(RUBRIC)) { console.error('unknown rubric ' + RUBRIC + '\n' + USAGE); process.exit(2); }
+if (!['screen', 'likeness', 'peer'].includes(RUBRIC)) { console.error('unknown rubric ' + RUBRIC + '\n' + USAGE); process.exit(2); }
 const outDir = OUT || path.join(SUBS, 'parity');
 const CAP = Number(cfg('parity_cap', 'REFEREE_PARITY_CAP', 90));     // model calls per day, all runs together
 const POOL = Number(cfg('parity_pool', 'REFEREE_PARITY_POOL', 3));   // model calls in parallel
@@ -155,7 +158,27 @@ Score how well SUB holds up next to REF, 0 to 10: 10 = indistinguishable in char
 
 Reply with ONLY this JSON:
 {"score":0,"same":"one plain sentence on what already matches","differences":[{"what":"the element","where":"where in the frame","ref":"how it is in REF","sub":"how it is in SUB","change":"what to change in SUB","size":"large|medium|small"}]}`;
-const PROMPT = s => (RUBRIC === 'likeness' ? LIKENESS_PROMPT(s) : SCREEN_PROMPT(s));
+// The peer rubric: REF is a shipped asset of another game in a similar style, a bar for craft, not a picture to match.
+const PEER_PROMPT = s => `You are comparing two store assets of the same kind, side by side, for two DIFFERENT games in a similar style.
+REF is a real, shipped asset of another game. It is the quality bar and is not being judged.
+SUB is the same kind of asset for a different game. Its characters, world and title are different from REF's on purpose: never count that as a difference.
+${s.title ? `The asset: ${s.title}.` : ''}
+
+The question is whether SUB holds up next to REF as professional work of this kind. Open both images, then compare:
+1. Composition for this kind of asset: a clear focal subject at a readable size, depth, the title's room and placement, nothing important cut off.
+2. Lettering: whether SUB's title and any words are set as well as REF's (a fitting, characterful face, size, colour, effects, placement, readability). A generic or clumsy face, misspelt or stray words are large differences.
+3. Rendering and polish: finish, detail, lighting and colour harmony at REF's level.
+4. Craft: artefacts, smeared or mangled details, duplicated characters, clutter, seams, anything that looks unfinished next to REF.
+
+Rules:
+- Report only differences in craft and quality a shopper would notice side by side. Different subjects, worlds, palettes or titles are not differences by themselves.
+- Be specific and literal: say what, where, how it falls short, and the change to make in SUB. List the largest first, at most 10.
+
+Score how well SUB holds up next to REF as the same kind of asset, 0 to 10: 10 = as professional as REF in every part; 8-9 = holds up next to REF, with small differences in polish; 6-7 = clearly weaker in one part (for example generic lettering, a weak composition, flatter rendering); 4-5 = weaker in two or more parts; 2-3 = reads as amateur next to REF; 0-1 = blank, broken or not this kind of asset.
+
+Reply with ONLY this JSON:
+{"score":0,"same":"one plain sentence on what already holds up","differences":[{"what":"the element","where":"where in the frame","ref":"how it is in REF","sub":"how it is in SUB","change":"what to change in SUB","size":"large|medium|small"}]}`;
+const PROMPT = s => (RUBRIC === 'likeness' ? LIKENESS_PROMPT(s) : RUBRIC === 'peer' ? PEER_PROMPT(s) : SCREEN_PROMPT(s));
 
 const cacheFile = path.join(outDir, 'cache.json'), cache = readJson(cacheFile, {});
 const budgetFile = path.join(path.resolve(ROOT, cfg('data_dir', 'REFEREE_DATA', 'data')), 'parity-budget.json');

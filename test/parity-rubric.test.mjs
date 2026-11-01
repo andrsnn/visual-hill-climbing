@@ -77,3 +77,13 @@ test('an unknown rubric is refused', () => {
   assert.equal(r.status, 2);
   assert.match(r.stderr, /unknown rubric/);
 });
+
+test('--rubric peer sends the peer prompt: another game is the quality bar, its subject and title are not compared', () => {
+  const t = setup();
+  const r = run(t, ['--rubric', 'peer', '--build', 'a']);
+  assert.equal(r.status, 0, r.stderr);
+  const p = prompts(t);
+  assert.match(p[0], /two DIFFERENT games/);
+  assert.match(p[0], /never count that as a difference/);
+  assert.equal(report(t).rubric, 'peer');
+});
